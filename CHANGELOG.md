@@ -6,6 +6,27 @@
 
 ---
 
+## [2026-02-27 | 8:15 PM IST] — claude + nityam
+
+### 📝 What Changed
+- **Created** `src/laptop/video_stream.py` — Working phone camera stream receiver using OpenCV
+- **Decided** streaming app: [IP Webcam by shenyaocn](https://play.google.com/store/apps/details?id=com.shenyaocn.android.WebCam)
+- **Updated** `docs/software.md` — Added chosen app, setup steps, working code reference
+
+### 🔧 Key Decisions Made
+- **Streaming App:** IP Webcam by shenyaocn (free, Android, MJPEG over Wi-Fi)
+- Stream URL format: `http://<phone-ip>:8080/video`
+- First working code added to `src/laptop/`
+
+### 📁 Files Added/Modified
+```
+src/laptop/video_stream.py   (NEW)
+docs/software.md             (MODIFIED)
+CHANGELOG.md                 (MODIFIED)
+```
+
+---
+
 ## [2026-02-27 | 8:00 PM IST] — claude + nityam
 
 ### 📝 What Changed

@@ -1,6 +1,6 @@
 # 💻 Software Documentation – AI Car
 
-<!-- edited by: claude + nityam | 2026-02-27 8:00 PM IST | marked GPS & Gyroscope as optional, camera + AI are core priority -->
+<!-- edited by: claude + nityam | 2026-02-27 8:15 PM IST | added chosen streaming app (IP Webcam), actual working code, src/laptop/video_stream.py reference -->
 
 > This document covers the software stack, AI model, video processing, and communication.
 
@@ -25,29 +25,50 @@ The software runs in **3 layers**:
 ### Video Streaming
 The phone camera streams live video to the laptop over Wi-Fi.
 
-**Options for streaming:**
+**App We Use:** [IP Webcam by shenyaocn](https://play.google.com/store/apps/details?id=com.shenyaocn.android.WebCam) (Free, Android)
+
+**Quick Setup:**
+1. Install the app on your phone
+2. Open app → tap **Start Server**
+3. Note the IP shown on screen (e.g. `192.168.1.50`)
+4. Phone + laptop must be on the **same Wi-Fi**
+5. Stream URL: `http://<phone-ip>:8080/video`
+
+**Other options (if needed):**
 | Method              | How It Works                                          | Difficulty |
 |---------------------|-------------------------------------------------------|------------|
-| IP Webcam App       | Android app that creates a video URL on local network | Easy       |
+| IP Webcam (shenyaocn) | ✅ **Our choice** — MJPEG stream over Wi-Fi         | Easy       |
 | DroidCam            | Turns phone into a webcam, accessible via IP          | Easy       |
 | Custom Web App      | HTML + JavaScript to access camera and stream         | Medium     |
 | RTSP Stream         | Professional streaming protocol                       | Advanced   |
 
-**How to access the stream in Python:**
+**Working code** → [`src/laptop/video_stream.py`](../src/laptop/video_stream.py)
+
 ```python
 import cv2
 
-# Replace with your phone's stream URL
-stream_url = "http://192.168.1.X:8080/video"
-cap = cv2.VideoCapture(stream_url)
+PHONE_IP = "192.168.1.50"   # Change to your phone's IP
+STREAM_URL = f"http://{PHONE_IP}:8080/video"
+
+cap = cv2.VideoCapture(STREAM_URL)
+
+if not cap.isOpened():
+    print("Error: Could not open stream.")
+    exit()
 
 while True:
     ret, frame = cap.read()
     if not ret:
-        break
-    cv2.imshow("Phone Camera", frame)
+        print("Failed to grab frame")
+        continue
+
+    cv2.imshow('AI Car — Phone Stream', frame)
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+
+cap.release()
+cv2.destroyAllWindows()
 ```
 
 ### Phone Sensor Data (Gyroscope + GPS) — ⚡ OPTIONAL
