@@ -14,7 +14,11 @@
 #   7. Press 'q' to quit
 
 import cv2
+from ultralytics import YOLO
 
+model_path = "src/models/best.pt"
+
+model = YOLO(model_path)
 # ── CONFIG ──────────────────────────────────────────
 PHONE_IP = "192.168.1.50"        # Change this to your phone's IP
 PORT = "8080"                     # Default port for IP Webcam app
@@ -43,7 +47,18 @@ def main():
         if not ret:
             print("⚠️  Failed to grab frame. Retrying...")
             continue
+        result = model.predict(frame)
+        
+        for r in results:
+        boxes = r.boxes
+        for box in boxes:
+            class_id = int(box.cls[0])
+            confidence = float(box.conf[0])
 
+            print("Detected:", class_id, confidence)
+
+        
+    
         cv2.imshow(WINDOW_NAME, frame)
 
         # Press 'q' to quit
