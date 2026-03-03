@@ -1,6 +1,7 @@
 # 💻 Software Documentation – AI Car
 
 <!-- edited by: claude + nityam | 2026-02-27 8:15 PM IST | added chosen streaming app (IP Webcam), actual working code, src/laptop/video_stream.py reference -->
+<!-- edited by: claude + nityam | 2026-03-03 | updated tech stack with kornia-rs, actual code structure, ESP32 endpoints, working file references -->
 
 > This document covers the software stack, AI model, video processing, and communication.
 
@@ -44,32 +45,27 @@ The phone camera streams live video to the laptop over Wi-Fi.
 
 **Working code** → [`src/laptop/video_stream.py`](../src/laptop/video_stream.py)
 
-```python
-import cv2
+The current implementation uses a **threaded pipeline** with **kornia-rs** (Rust-backed) for fastest JPEG decoding:
 
-PHONE_IP = "192.168.1.50"   # Change to your phone's IP
-STREAM_URL = f"http://{PHONE_IP}:8080/video"
-
-cap = cv2.VideoCapture(STREAM_URL)
-
-if not cap.isOpened():
-    print("Error: Could not open stream.")
-    exit()
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("Failed to grab frame")
-        continue
-
-    cv2.imshow('AI Car — Phone Stream', frame)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
 ```
+Reader Thread (persistent HTTP session)
+    │
+    │  parses MJPEG byte stream (FF D8..FF D9 markers)
+    │  decodes JPEG via kornia-rs (2-5x faster than OpenCV)
+    │  drops stale frames to keep latency low
+    ▼
+Queue (maxsize=2, always latest frame)
+    │
+    ▼
+Main Thread
+    ├─ ai_processor.py → lane detection + PID steering
+    ├─ send command to ESP32 via HTTP (tank drive)
+    └─ display with FPS/latency overlay
+```
+
+**Key files:**
+- `video_stream.py` — threaded MJPEG receiver + ESP32 command sender
+- `ai_processor.py` — lane detection (white centerline on black track) + PID controller
 
 ### Phone Sensor Data (Gyroscope + GPS) — ⚡ OPTIONAL
 
@@ -96,14 +92,14 @@ The phone can also send gyroscope and GPS data. This can be done via:
 
 ### Tech Stack on Laptop
 
-| Tool          | Version (Suggested) | Purpose                           |
-|---------------|---------------------|-----------------------------------|
-| Python        | 3.9+                | Main language                     |
-| OpenCV        | 4.x                 | Image/video processing            |
-| NumPy         | Latest               | Array operations for image data   |
-| TensorFlow / PyTorch | Latest        | AI model training & inference     |
-| scikit-learn  | Latest               | ML utilities (optional)           |
-| Socket / Flask | Latest              | Communication with ESP32          |
+| Tool          | Version          | Purpose                              |
+|---------------|------------------|--------------------------------------|
+| Python        | 3.12             | Main language                        |
+| kornia-rs     | 0.1.10           | Rust-backed JPEG decode (2-5x faster)|
+| OpenCV        | 4.13+            | Image processing, display, contours  |
+| NumPy         | 2.4+             | Array operations for image data      |
+| requests      | 2.32+            | HTTP streaming + ESP32 commands      |
+| TensorFlow / PyTorch | (future)  | AI model training & inference        |
 
 ### AI Model Options
 
@@ -148,37 +144,46 @@ FOR each video frame:
 
 ### Command Protocol (Laptop → ESP32)
 
-| Command       | Action                        |
-|---------------|-------------------------------|
-| `GO`          | Move forward at normal speed  |
-| `STOP`        | Stop all motors               |
-| `SLOW`        | Reduce speed                  |
-| `SPEED_30`    | Set speed to 30% PWM         |
-| `SPEED_50`    | Set speed to 50% PWM         |
-| `SPEED_100`   | Set speed to 100% PWM        |
-| `LEFT`        | Turn left                     |
-| `RIGHT`       | Turn right                    |
-| `REVERSE`     | Move backward                 |
-| `E_STOP`      | Emergency stop (from ultrasonic) |
+The laptop sends HTTP requests to the ESP32 web server:
 
-### ESP32 Code Structure (Pseudo)
+| Endpoint                          | Action                               |
+|-----------------------------------|--------------------------------------|
+| `GET /drive?left=N&right=N`       | Tank drive (N = -255 to 255)         |
+| `GET /go`                         | Forward at default speed             |
+| `GET /stop`                       | Stop all motors                      |
+| `GET /slow`                       | Forward at slow speed                |
+| `GET /reverse`                    | Backward at default speed            |
+| `GET /left`                       | Pivot turn left                      |
+| `GET /right`                      | Pivot turn right                     |
+| `GET /status`                     | JSON: distance, speed, state, etc.   |
+| `POST /command`                   | JSON body: `{"cmd":"GO"}` etc.      |
+
+The AI pipeline uses `/drive?left=N&right=N` (tank drive) for smooth PID-based steering.
+Simple commands (`/go`, `/stop`, etc.) are for manual testing from a browser.
+
+### ESP32 Code Structure
+
+The actual ESP32 code is in `src/esp32/`. See [`main.ino`](../src/esp32/main.ino) for the full implementation.
+
 ```
 setup():
-    connect_wifi()
-    setup_motor_pins()
-    setup_ultrasonic_pins()
+    setup_motors()          // all motors stopped
+    setup_ultrasonic()      // HC-SR04 ready
+    setup_wifi()            // connect to Wi-Fi
+    setup_server()          // start HTTP web server
 
 loop():
-    // SAFETY FIRST - check ultrasonic
-    distance = read_ultrasonic()
-    IF distance < EMERGENCY_THRESHOLD:
-        stop_all_motors()      // INSTANT - no Wi-Fi needed
-        return
+    // SAFETY FIRST - check ultrasonic (runs locally, no Wi-Fi)
+    distance = read_distance_cm()
+    IF distance < 15cm:
+        stop_all_motors()   // INSTANT - no network delay
+        state = "EMERGENCY_STOP"
 
-    // Then check for laptop commands
-    IF new_command_received():
-        command = get_command()
-        execute_command(command)
+    // Handle incoming HTTP commands from laptop
+    server.handleClient()
+
+    // Watchdog: stop motors if no command for 2 seconds
+    check_watchdog()
 ```
 
 > ⚠️ **Critical:** The ultrasonic check happens BEFORE checking laptop commands. Safety first.
@@ -206,28 +211,31 @@ Phone ──── Wi-Fi ────→ Laptop ──── Wi-Fi/Serial ──
 
 ---
 
-## 📁 Planned Code Structure
+## 📁 Code Structure
 
 ```
 src/
 ├── laptop/
-│   ├── main.py              # Main entry point
-│   ├── video_stream.py      # Captures video from phone
-│   ├── ai_model.py          # AI model loading + prediction
-│   ├── detector.py          # OpenCV-based detection logic
-│   ├── decision_engine.py   # Makes driving decisions
-│   ├── communicator.py      # Sends commands to ESP32
-│   └── phone_sensors.py     # (OPTIONAL) Receives gyro + GPS from phone
+│   ├── video_stream.py      # ✅ Threaded MJPEG receiver + ESP32 commander
+│   ├── ai_processor.py      # ✅ Lane detection (PID) + steering angle output
+│   ├── video_stream.v2.py   # (old simple version — for reference)
+│   ├── main.py              # (planned) Main entry point
+│   ├── ai_model.py          # (planned) AI model loading + prediction
+│   ├── detector.py          # (planned) Sign/light detection logic
+│   └── phone_sensors.py     # (OPTIONAL) Gyro + GPS receiver
 │
 ├── esp32/
-│   ├── main.ino             # Arduino/ESP-IDF main file
-│   ├── motor_control.h      # Motor control functions
-│   ├── ultrasonic.h         # Ultrasonic sensor functions
-│   └── wifi_comm.h          # Wi-Fi command receiver
+│   ├── main.ino             # ✅ Arduino main sketch (setup + loop)
+│   ├── config.h             # ✅ Pin definitions, Wi-Fi creds, constants
+│   ├── motor_control.h      # ✅ Tank-drive motor functions (L298N)
+│   ├── ultrasonic.h         # ✅ HC-SR04 distance reading
+│   └── wifi_comm.h          # ✅ Wi-Fi + HTTP web server endpoints
 │
 └── phone/
     └── (streaming app config or custom web app)
 ```
+
+> ✅ = implemented and working &nbsp;&nbsp; (planned) = to be built
 
 ---
 

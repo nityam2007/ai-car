@@ -1,6 +1,7 @@
 # 🏛️ System Architecture – AI Car
 
 <!-- edited by: claude + nityam | 2026-02-27 8:00 PM IST | marked GPS & Gyroscope as optional in architecture -->
+<!-- edited by: claude + nityam | 2026-03-03 | updated data flow with actual HTTP endpoints, kornia-rs pipeline, tank drive -->
 
 > This document explains the full system architecture, data flow, and how all components communicate.
 
@@ -28,30 +29,43 @@ The AI Car system has **3 main nodes** that talk to each other:
 
 ## 🔗 Communication Layers
 
-### Layer 1: Phone → Laptop (Sensor Data)
+### Layer 1: Phone → Laptop (Video Stream)
 
 | Data Type       | Protocol      | Format          | Frequency       |
-|-----------------|---------------|-----------------|-----------------|
-| Video Stream    | HTTP (MJPEG)  | Video frames    | 15–30 FPS       |
-| Gyroscope ⚡    | WebSocket/HTTP| JSON            | 10–50 Hz        |
-| GPS ⚡          | WebSocket/HTTP| JSON            | 1–5 Hz          |
+|-----------------|---------------|-----------------|------------------|
+| Video Stream    | HTTP (MJPEG)  | JPEG frames     | 15–30 FPS       |
+| Gyroscope ⚡    | (not yet)     | JSON            | Optional        |
+| GPS ⚡          | (not yet)     | JSON            | Optional        |
 
 > ⚡ Gyroscope & GPS are **optional**. On our list — will add if we can. Core system works with video stream only.
 
-**Flow:**
+**Current Implementation:**
 ```
-Phone Camera App
-    ↓ (HTTP video stream URL)
-Laptop OpenCV reads frames
+Phone: IP Webcam app → http://<phone-ip>:8081/video (MJPEG)
     ↓
-Each frame sent to AI model
+Laptop: video_stream.py reader thread (persistent HTTP session)
+    ↓ kornia-rs decode (Rust, 2-5x faster than OpenCV)
+    ↓
+Queue(maxsize=2) → main thread (AI + display)
 ```
 
-### Layer 2: Laptop → ESP32 (Commands)
+### Layer 2: Laptop → ESP32 (Motor Commands)
 
-| Data Type       | Protocol       | Format          | Frequency       |
-|-----------------|----------------|-----------------|-----------------|
-| Drive Command   | HTTP / Socket  | String/JSON     | As needed       |
+| Data Type       | Protocol       | Format                           | Frequency       |
+|-----------------|----------------|----------------------------------|------------------|
+| Tank Drive      | HTTP GET       | `/drive?left=N&right=N`          | ~10 Hz          |
+| Simple Command  | HTTP GET       | `/go`, `/stop`, `/slow`, etc.    | As needed       |
+| Status Query    | HTTP GET       | `/status` → JSON response        | As needed       |
+
+**Current Implementation:**
+```
+Laptop: ai_processor.py → steering angle (PID)
+    ↓ steering_to_tank() → left/right motor speeds
+    ↓
+GET http://<esp32-ip>/drive?left=150&right=80
+    ↓
+ESP32: wifi_comm.h → motor_control.h → tank_drive(150, 80)
+```
 
 **Flow:**
 ```
@@ -116,40 +130,37 @@ Ultrasonic detects object at < 15cm
 ## 🔄 Complete Data Flow Diagram
 
 ```
-Step 1: PHONE starts streaming
+Step 1: PHONE starts streaming (IP Webcam app)
     │
-    ├── Video → http://phone-ip:8080/video        (CORE)
-    ├── Gyro  → ws://phone-ip:8081/gyro            (OPTIONAL)
-    └── GPS   → ws://phone-ip:8081/gps             (OPTIONAL)
+    └── Video → http://<phone-ip>:8081/video  (MJPEG stream)
     │
     ▼
-Step 2: LAPTOP receives all data
+Step 2: LAPTOP receives video stream
     │
-    ├── cv2.VideoCapture(stream_url) → frames      (CORE)
-    ├── WebSocket client → gyro_data                (OPTIONAL)
-    └── WebSocket client → gps_data                 (OPTIONAL)
+    ├── video_stream.py: Reader Thread (persistent HTTP, kornia-rs decode)
+    │   └── Queue(maxsize=2) → always latest frame
     │
     ▼
 Step 3: LAPTOP processes each frame
     │
-    ├── Frame → AI Model → detections[]
-    ├── detections + gyro + gps → Decision Engine
-    └── Decision → command (GO/STOP/SLOW/LEFT/RIGHT)
+    ├── ai_processor.py: ROI → grayscale → threshold → contours → PID
+    │   └── Output: steering angle in degrees (+right / -left)
     │
     ▼
-Step 4: LAPTOP sends command to ESP32
+Step 4: LAPTOP sends tank-drive command to ESP32
     │
-    └── HTTP POST http://esp32-ip/command {"cmd": "STOP"}
+    └── GET http://<esp32-ip>/drive?left=N&right=N
+    │   (steering angle → differential motor speeds)
     │
     ▼
 Step 5: ESP32 receives and executes
     │
-    ├── Parse command
-    ├── Set motor pins accordingly
-    └── BUT FIRST: Check ultrasonic (always runs before commands)
+    ├── wifi_comm.h: WebServer parses /drive request
+    ├── motor_control.h: tank_drive(left, right)
+    └── BUT FIRST: ultrasonic.h checks distance (always runs before commands)
     │
     ▼
-Step 6: MOTORS move (or stop)
+Step 6: MOTORS move (or stop if emergency)
 ```
 
 ---
@@ -203,20 +214,17 @@ ESP32 Logic:
 
 ## 🔮 Architecture Evolution (Future)
 
-### Current: Laptop as Cloud
+### Current: Laptop as Brain
 ```
-Phone → Laptop → ESP32 (3 devices, Wi-Fi dependent)
-```
-
-### Future Option 1: Raspberry Pi on Car
-```
-Phone/Pi Camera → Raspberry Pi (on car) → ESP32 (no laptop needed)
+Phone (Camera) → Laptop (AI + PID) → ESP32 (Motors) — 3 devices, all on Wi-Fi
 ```
 
-### Future Option 2: Edge AI on ESP32
+### Future Option: Raspberry Pi on Car
 ```
-Camera Module → ESP32 with TinyML → Motors (single device)
+Pi Camera → Raspberry Pi (on car, runs AI) → ESP32 (motors) — no laptop needed
 ```
+
+> The current 3-device architecture works well for our diploma project. A Raspberry Pi upgrade would make the car fully self-contained.
 
 ---
 

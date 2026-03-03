@@ -1,6 +1,7 @@
 # 🧩 Module Breakdown & Task Plan – AI Car
 
 <!-- edited by: claude + nityam | 2026-02-27 8:00 PM IST | marked GPS & Gyroscope tasks as optional, added priority order note -->
+<!-- edited by: claude + nityam | 2026-03-03 | updated task statuses: phone streaming done, ESP32 code written, video_stream.py done -->
 
 > This document divides the entire project into independent modules with clear tasks, so team members can work in parallel.
 >
@@ -54,11 +55,11 @@
 
 | #  | Task                                     | Status      | Notes                              |
 |----|------------------------------------------|-------------|------------------------------------|
-| 1  | Wire HC-SR04 to ESP32                    | ⬜ Not Started | Add voltage divider for ECHO     |
-| 2  | Write ESP32 code to read distance        | ⬜ Not Started | Test with serial monitor         |
-| 3  | Set emergency threshold (e.g., 15cm)     | ⬜ Not Started | Calibrate based on car speed     |
-| 4  | Implement emergency stop in ESP32 code   | ⬜ Not Started | Must run BEFORE Wi-Fi commands   |
-| 5  | Test emergency brake with obstacles      | ⬜ Not Started | Use boxes, hands, toy cars       |
+| 1  | Wire HC-SR04 to ESP32                    | ⬜ Not Started | Add voltage divider for ECHO (see hardware.md) |
+| 2  | Write ESP32 code to read distance        | ✅ Done        | `src/esp32/ultrasonic.h`           |
+| 3  | Set emergency threshold (e.g., 15cm)     | ✅ Done        | Set in `src/esp32/config.h`        |
+| 4  | Implement emergency stop in ESP32 code   | ✅ Done        | Runs in `main.ino` loop BEFORE Wi-Fi |
+| 5  | Test emergency brake with obstacles      | ⬜ Not Started | Use boxes, hands, toy cars         |
 
 ### Deliverable
 ✅ ESP32 can detect obstacles within 15cm and **immediately stop motors** without any laptop/Wi-Fi involvement.
@@ -73,12 +74,12 @@
 
 | #  | Task                                         | Status      | Notes                            |
 |----|----------------------------------------------|-------------|----------------------------------|
-| 1  | Choose streaming app (IP Webcam / DroidCam)  | ⬜ Not Started | Test both, pick best           |
-| 2  | Test video stream on laptop (OpenCV)         | ⬜ Not Started | `cv2.VideoCapture(url)`        |
+| 1  | Choose streaming app (IP Webcam / DroidCam)  | ✅ Done        | IP Webcam by shenyaocn chosen  |
+| 2  | Test video stream on laptop (OpenCV)         | ✅ Done        | `video_stream.py` working      |
 | 3  | ⚡ Set up gyroscope data streaming (OPTIONAL) | ⬜ Not Started | Optional — will add if we can  |
 | 4  | ⚡ Set up GPS data streaming (OPTIONAL)       | ⬜ Not Started | Optional — will add if we can  |
 | 5  | Test all streams running simultaneously      | ⬜ Not Started | Check for lag and bandwidth    |
-| 6  | Document stream URLs and setup steps         | ⬜ Not Started |                                |
+| 6  | Document stream URLs and setup steps         | ✅ Done        | Documented in software.md      |
 
 ### Deliverable
 ✅ Laptop can receive live video frames from the phone over Wi-Fi. *(Optionally: gyroscope and GPS data too, if added.)*
@@ -115,12 +116,12 @@
 
 | #  | Task                                        | Status      | Notes                            |
 |----|---------------------------------------------|-------------|----------------------------------|
-| 1  | Set up Python project structure             | ⬜ Not Started | See [software.md](software.md) |
-| 2  | Write video stream receiver                 | ⬜ Not Started | `video_stream.py`              |
+| 1  | Set up Python project structure             | ✅ Done        | See [software.md](software.md) |
+| 2  | Write video stream receiver                 | ✅ Done        | `video_stream.py` (kornia-rs)  |
 | 3  | Write AI model loader + predictor           | ⬜ Not Started | `ai_model.py`                  |
-| 4  | Write detection logic (OpenCV processing)   | ⬜ Not Started | `detector.py`                  |
+| 4  | Write detection logic (OpenCV processing)   | ✅ Done        | `ai_processor.py` (lane + PID) |
 | 5  | Write decision engine                       | ⬜ Not Started | `decision_engine.py`           |
-| 6  | Write ESP32 communicator                    | ⬜ Not Started | `communicator.py`              |
+| 6  | Write ESP32 communicator                    | ✅ Done        | Built into `video_stream.py`   |
 | 7  | ⚡ Write phone sensor receiver (OPTIONAL)    | ⬜ Not Started | `phone_sensors.py` — only if gyro/GPS added |
 | 8  | Write main.py (orchestrates everything)     | ⬜ Not Started | `main.py`                      |
 | 9  | Test full pipeline with recorded video      | ⬜ Not Started | Before live testing            |

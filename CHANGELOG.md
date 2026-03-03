@@ -6,6 +6,49 @@
 
 ---
 
+## [2026-03-03 | Evening IST] — claude + nityam
+
+### 📝 What Changed
+- **Created** `src/esp32/main.ino` — Arduino main sketch: Wi-Fi web server + ultrasonic safety + motor control loop
+- **Created** `src/esp32/config.h` — Pin definitions (GPIO 2-11), Wi-Fi creds, safety thresholds, speed defaults
+- **Created** `src/esp32/motor_control.h` — Tank-drive motor functions for 4WD (2 left + 2 right via L298N)
+- **Created** `src/esp32/ultrasonic.h` — HC-SR04 distance reading with emergency detection
+- **Created** `src/esp32/wifi_comm.h` — HTTP web server with /drive, /stop, /status, /go, /command endpoints (ESP32 + ESP8266 compatible)
+- **Updated** `src/laptop/video_stream.py` — Added ESP32 command sending: steering→tank drive conversion, rate-limited HTTP, stop on quit/AI-off
+- **Updated** `docs/hardware.md` — Filled GPIO pin numbers (GPIO 4-11 for L298N, GPIO 2-3 for HC-SR04), added voltage divider diagram, updated for 4WD tank-style
+- **Updated** `docs/software.md` — Updated tech stack (kornia-rs, Python 3.12), actual code structure with ✅ markers, HTTP endpoint table, kornia-rs pipeline diagram
+- **Updated** `docs/architecture.md` — Updated data flow with actual endpoints (/drive?left=N&right=N), kornia-rs pipeline, actual file references
+- **Updated** `docs/sensors.md` — Filled GPIO pins (GPIO 2 TRIG, GPIO 3 ECHO), added voltage divider details, removed LiDAR from future sensors
+- **Updated** `docs/modules.md` — Updated task statuses: M2 ultrasonic code ✅, M3 streaming ✅, M5 video_stream + ai_processor + communicator ✅
+- **Updated** `README.md` — Updated project structure with actual files, tech stack with kornia-rs, lane following as working feature, realistic future improvements
+
+### 🔧 Key Decisions Made
+- **Tank-style 4WD:** 2 left motors in parallel (L298N Ch.A) + 2 right motors in parallel (L298N Ch.B), differential drive for turning
+- **HTTP API for motor commands:** GET /drive?left=N&right=N (N = -255 to 255), simple and browser-testable
+- **Steering conversion:** PID angle → normalized [-1,1] → differential motor speeds for tank drive
+- **Safety layers:** Ultrasonic emergency stop (local, <5ms) + watchdog (stop if no command for 2s) + ESP32 rejects drive commands during emergency
+- **ESP32 + ESP8266 compatible:** Same code works on both via #ifdef, analogWrite for PWM
+- **Voltage divider required:** HC-SR04 ECHO (5V) → 1kΩ + 2kΩ divider → 3.3V for ESP32 GPIO
+
+### 📁 Files Added/Modified
+```
+src/esp32/main.ino           (NEW)
+src/esp32/config.h           (NEW)
+src/esp32/motor_control.h    (NEW)
+src/esp32/ultrasonic.h       (NEW)
+src/esp32/wifi_comm.h        (NEW)
+src/laptop/video_stream.py   (MODIFIED)
+docs/hardware.md             (MODIFIED)
+docs/software.md             (MODIFIED)
+docs/architecture.md         (MODIFIED)
+docs/sensors.md              (MODIFIED)
+docs/modules.md              (MODIFIED)
+README.md                    (MODIFIED)
+CHANGELOG.md                 (MODIFIED)
+```
+
+---
+
 ## [2026-02-27 | 8:15 PM IST] — claude + nityam
 
 ### 📝 What Changed

@@ -1,7 +1,8 @@
-# video_stream.py — Low-Latency Phone Camera Stream Receiver
+# video_stream.py — Low-Latency Phone Camera Stream Receiver + ESP32 Commander
 # created by: claude + nityam | 2026-02-27 8:15 PM IST
 # edited by: claude + nityam | 2026-02-28 — FPS/latency overlay, auth, manual MJPEG parser
 # edited by: claude + nityam | 2026-03-03 — full rewrite: kornia-rs (Rust) + threaded pipeline
+# edited by: claude + nityam | 2026-03-03 — added ESP32 motor command sending (tank drive)
 #
 # ── ARCHITECTURE (for minimum latency) ──────────────────────────────────────
 #   Reader Thread ──► Queue(maxsize=2, drops stale) ──► Main Thread (display+AI)
@@ -66,6 +67,14 @@ WINDOW_NAME = "AI Car — Stream"
 SHOW_STATS  = True                 # FPS + latency bar at top
 ENABLE_AI   = True                 # lane overlay on start (toggle: 'a')
 
+# ── ESP32 Motor Controller ──────────────────────────────────────────────────
+# Set to your ESP32's IP (shown on Serial Monitor after upload).
+# Leave empty "" to disable sending commands (view-only mode).
+ESP32_IP    = ""                   # e.g. "192.168.16.100" ← change this
+ESP32_PORT  = "80"                 # default HTTP port
+BASE_SPEED  = 150                  # PWM 0-255 — base speed for tank drive
+SEND_HZ     = 10                   # max commands/sec to ESP32 (10 = smooth)
+
 # latency knobs
 CHUNK_SIZE  = 8192                 # bytes per HTTP read (bigger = fewer syscalls)
 QUEUE_SIZE  = 2                    # frame buffer (small = always latest frame)
@@ -77,6 +86,63 @@ if USERNAME and PASSWORD:
 else:
     _STREAM_URL = f"http://{PHONE_IP}:{PORT}{STREAM_PATH}"
 _DISPLAY_URL = f"http://{PHONE_IP}:{PORT}{STREAM_PATH}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  ESP32 MOTOR COMMANDS — steering angle → tank drive → HTTP to ESP32
+# ─────────────────────────────────────────────────────────────────────────────
+_esp32_sess   = None
+_last_send_t  = 0.0
+_SEND_INTERVAL = 1.0 / max(1, SEND_HZ)
+MAX_STEER_DEG  = 35.0              # must match ai_processor.MAX_STEER_DEG
+
+def _init_esp32():
+    """Set up persistent HTTP session for ESP32 commands."""
+    global _esp32_sess
+    if ESP32_IP:
+        _esp32_sess = requests.Session()
+
+def steering_to_tank(steering_deg: float, base: int = BASE_SPEED):
+    """Convert PID steering angle to tank-drive (left, right) motor speeds.
+
+    steering > 0 → turn right → left motors faster, right motors slower
+    steering < 0 → turn left  → right motors faster, left motors slower
+
+    Returns (left_speed, right_speed) each in range 0..255.
+    # created by: claude + nityam | 2026-03-03
+    """
+    t = steering_deg / MAX_STEER_DEG          # normalize to [-1, +1]
+    t = max(-1.0, min(1.0, t))
+    left  = int(base * (1.0 + t))             # right turn → left goes faster
+    right = int(base * (1.0 - t))             # right turn → right goes slower
+    return max(0, min(255, left)), max(0, min(255, right))
+
+def send_to_esp32(steering_deg: float):
+    """Send tank-drive command to ESP32 (rate-limited, non-blocking).
+    # created by: claude + nityam | 2026-03-03
+    """
+    global _last_send_t
+    if not _esp32_sess or not ESP32_IP:
+        return
+    now = time.perf_counter()
+    if now - _last_send_t < _SEND_INTERVAL:
+        return                                # rate limit
+    _last_send_t = now
+    left, right = steering_to_tank(steering_deg)
+    try:
+        url = f"http://{ESP32_IP}:{ESP32_PORT}/drive?left={left}&right={right}"
+        _esp32_sess.get(url, timeout=0.08)    # 80ms timeout — don't block display
+    except Exception:
+        pass                                  # fire-and-forget
+
+def stop_esp32():
+    """Send stop command to ESP32."""
+    if not _esp32_sess or not ESP32_IP:
+        return
+    try:
+        _esp32_sess.get(f"http://{ESP32_IP}:{ESP32_PORT}/stop", timeout=0.1)
+    except Exception:
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -175,12 +241,16 @@ def main():
     print("=" * 55)
     dec = "kornia-rs (Rust/libjpeg-turbo)" if KORNIA_OK else "OpenCV (install kornia-rs for 2x speed)"
     ai  = "ai_processor loaded" if AI_OK else "ai_processor NOT found"
+    esp = f"ESP32 at {ESP32_IP}:{ESP32_PORT}" if ESP32_IP else "DISABLED (set ESP32_IP to enable)"
     print(f"   Decoder : {dec}")
     print(f"   AI      : {ai}")
+    print(f"   ESP32   : {esp}")
     print(f"   URL     : {_DISPLAY_URL}")
-    print(f"   Keys    : q=quit  a=AI on/off  s=save")
+    print(f"   Keys    : q=quit  a=AI on/off  s=save  e=ESP32 stop")
     print("=" * 55)
     print()
+
+    _init_esp32()
 
     fq   = queue.Queue(maxsize=QUEUE_SIZE)
     stop = threading.Event()
@@ -212,6 +282,9 @@ def main():
         # ── AI overlay ──
         if ai_on and AI_OK:
             display, steering = process_frame(frame)
+            # send steering command to ESP32
+            if steering is not None:
+                send_to_esp32(steering)
         else:
             display  = frame
             steering = None
@@ -248,6 +321,11 @@ def main():
         elif key == ord('a'):
             ai_on = not ai_on
             print(f"  AI overlay: {'ON' if ai_on else 'OFF'}")
+            if not ai_on:
+                stop_esp32()     # stop motors when AI is turned off
+        elif key == ord('e'):
+            stop_esp32()
+            print("  ESP32: STOP sent")
         elif key == ord('s'):
             fn = f"capture_{save_idx:03d}.jpg"
             cv2.imwrite(fn, display)
@@ -255,6 +333,7 @@ def main():
             save_idx += 1
 
     stop.set()
+    stop_esp32()               # stop motors on exit
     cv2.destroyAllWindows()
     print("\n  Stream closed.\n")
 

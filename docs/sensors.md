@@ -1,6 +1,7 @@
 # 📡 Sensors Documentation – AI Car
 
 <!-- edited by: claude + nityam | 2026-02-27 8:00 PM IST | marked GPS & Gyroscope as optional, camera + ultrasonic are core priority -->
+<!-- edited by: claude + nityam | 2026-03-03 | filled GPIO pins (GPIO 2 TRIG, GPIO 3 ECHO), added voltage divider note -->
 
 > This document covers all sensors used in the project: ultrasonic, phone camera (core), and optionally phone gyroscope & GPS.
 
@@ -63,14 +64,16 @@ If distance < threshold → EMERGENCY STOP
 
 ### Wiring (ESP32 → HC-SR04)
 
-| HC-SR04 Pin | ESP32-C6 Pin | Description        |
-|-------------|-------------|---------------------|
-| VCC         | 5V          | Power supply        |
-| GND         | GND         | Ground              |
-| TRIG        | GPIO X      | Trigger signal      |
-| ECHO        | GPIO X      | Echo signal         |
+| HC-SR04 Pin | ESP32-C6 Pin | Description                              |
+|-------------|-------------|-------------------------------------------|
+| VCC         | 5V          | Power supply                              |
+| GND         | GND         | Ground                                    |
+| TRIG        | GPIO 2      | Trigger signal (output from ESP32)        |
+| ECHO        | GPIO 3      | Echo signal (through voltage divider!)    |
 
-> ⚠️ **Note:** The HC-SR04 ECHO pin outputs 5V, but ESP32 GPIO is 3.3V tolerant. Use a **voltage divider** (two resistors) on the ECHO pin to avoid damaging the ESP32.
+> ⚠️ **IMPORTANT:** The HC-SR04 ECHO pin outputs 5V, but ESP32 GPIO is 3.3V tolerant. Use a **voltage divider** on the ECHO pin:
+> `ECHO → 1kΩ → GPIO 3 → 2kΩ → GND` (gives ~3.3V, safe for ESP32).
+> See [hardware.md](hardware.md) for the full wiring diagram.
 
 ### Emergency Brake Logic
 ```
@@ -274,10 +277,9 @@ navigator.geolocation.watchPosition(function(position) {
 
 | Sensor          | Purpose                              | Priority  |
 |-----------------|--------------------------------------|-----------|
-| IR Sensors      | Line following / lane detection      | Medium    |
+| IR Sensors      | Line following (alternative to camera) | Medium  |
 | Wheel Encoder   | Measure exact distance traveled      | Medium    |
 | IMU (MPU6050)   | Better orientation than phone gyro   | Low       |
-| LiDAR           | 360° distance mapping                | Future    |
 | Second Ultrasonic| Rear obstacle detection             | Low       |
 
 ---

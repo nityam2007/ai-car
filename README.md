@@ -1,6 +1,7 @@
 # 🚗 AI Car – Vision-Based Autonomous Driving System
 
 <!-- edited by: claude + nityam | 2026-02-27 8:00 PM IST | added priority order, marked GPS/Gyro as optional -->
+<!-- edited by: claude + nityam | 2026-03-03 | updated project structure, tech stack, features, removed unrealistic items -->
 
 > A miniature self-driving car that **sees** the road through a phone camera, **thinks** using AI on a laptop, and **acts** through an ESP32 controller — all in real time.
 
@@ -95,9 +96,9 @@ This project is divided into **4 main modules**. Each can be worked on independe
 | 🚗 Speed Limit Detection       | Reads speed limit signs → adjusts motor speed                     |
 | 🚧 Obstacle Detection (AI)     | Camera sees objects ahead → AI decides to stop or avoid           |
 | 🚨 Emergency Brake (Ultrasonic)| Sensor detects close object → ESP32 **instantly** stops motors    |
-| 📍 Position Tracking (GPS)     | ⚡ **Optional** — Phone GPS sends location data → laptop tracks car position. *On our list, will add if we can.* |
+| �️ Lane Following (PID)       | ✅ Camera detects white centerline → PID controller steers car    |
+| �📍 Position Tracking (GPS)     | ⚡ **Optional** — Phone GPS sends location data → laptop tracks car position. *On our list, will add if we can.* |
 | 📐 Orientation (Gyroscope)     | ⚡ **Optional** — Phone gyro detects tilt/turn → helps with navigation. *On our list, will add if we can.* |
-| 🛣️ Lane Detection (Optional)   | ⚡ **Optional** — Camera or sensors detect lane boundaries        |
 
 ### 🔑 Important Design Decisions
 
@@ -127,11 +128,12 @@ This project is divided into **4 main modules**. Each can be worked on independe
 
 | Tool / Library       | Purpose                                    |
 |----------------------|--------------------------------------------|
-| Python               | Main programming language                  |
+| Python 3.12          | Main programming language                  |
+| kornia-rs (Rust)     | Fast JPEG decoding (2-5x faster)           |
 | OpenCV               | Video frame processing, image analysis     |
-| ML Model (Custom)    | Traffic sign & object recognition          |
-| Socket / HTTP        | Laptop ↔ ESP32 communication               |
-| Streaming App/Web    | Phone → Laptop video stream                |
+| NumPy                | Array operations for image data            |
+| requests             | HTTP streaming + ESP32 commands            |
+| ML Model (Custom)    | Traffic sign & object recognition (planned)|
 
 ### 🔧 Hardware
 
@@ -190,15 +192,27 @@ This lets us test safely without needing a real road.
 PROJECT/
 ├── README.md                  ← You are here
 ├── CHANGELOG.md               ← Project change history
+├── requirements.txt           ← Python dependencies (pip install -r)
+├── .gitignore
 ├── aicar.md                   ← Original project notes (DO NOT EDIT)
 ├── docs/
 │   ├── architecture.md        ← System design & data flow
 │   ├── hardware.md            ← Hardware components & wiring
-│   ├── software.md            ← AI model, OpenCV, code structure
-│   ├── sensors.md             ← Sensor details (ultrasonic, gyro, GPS)
+│   ├── software.md            ← Software stack, code structure
+│   ├── sensors.md             ← Sensor details (ultrasonic, camera)
 │   ├── road-simulation.md     ← Test environment setup
 │   └── modules.md             ← Module-wise task breakdown
-├── src/                       ← Source code (to be added)
+├── src/
+│   ├── laptop/
+│   │   ├── video_stream.py    ← ✅ Threaded MJPEG receiver + ESP32 commander
+│   │   ├── ai_processor.py    ← ✅ Lane detection + PID steering
+│   │   └── video_stream.v2.py ← (old simple version)
+│   └── esp32/
+│       ├── main.ino           ← ✅ Arduino main sketch
+│       ├── config.h           ← ✅ Pin defs, Wi-Fi creds, constants
+│       ├── motor_control.h    ← ✅ Tank-drive motor functions
+│       ├── ultrasonic.h       ← ✅ HC-SR04 distance reading
+│       └── wifi_comm.h        ← ✅ Wi-Fi + HTTP web server
 ├── models/                    ← Trained AI models (to be added)
 └── assets/                    ← Images, diagrams (to be added)
 ```
@@ -213,12 +227,12 @@ Developed as a **Diploma Semester 6 Project** by a team of **11 members**.
 
 ## 🧪 Future Improvements
 
-- 🎯 YOLO-based object detection for better accuracy
-- 🛤️ Real-time lane detection using computer vision
+- 🎯 Traffic sign detection using a trained CNN model
+- 🚦 Traffic light color recognition (red/yellow/green)
 - 📱 Mobile app for manual override control
-- 🤖 On-device edge AI (Raspberry Pi upgrade)
-- 📡 More sensors (IR, LiDAR for advanced detection)
-- 🗺️ Path planning using GPS waypoints
+- 🤖 Raspberry Pi on-car upgrade (remove laptop dependency)
+- 📊 Dashboard web UI showing live stats from ESP32 `/status`
+- 🔧 PID tuning interface for real-time gain adjustment
 
 ---
 

@@ -1,6 +1,7 @@
 # 🔧 Hardware Documentation – AI Car
 
 <!-- edited by: claude + nityam | 2026-02-27 8:00 PM IST | added edit tracking comment -->
+<!-- edited by: claude + nityam | 2026-03-03 | filled GPIO pins, updated for 4WD tank-style, added voltage divider wiring -->
 
 > This document covers all physical components used in the AI Car project.
 
@@ -14,11 +15,11 @@
 |----|----------------------------|----------|--------------------------------------|
 | 1  | ESP32-C6 Dev Board         | 1        | Main microcontroller                 |
 | 2  | L298N Motor Driver Module  | 1        | Controls DC motors (speed + direction) |
-| 3  | DC Motors (with wheels)    | 2–4      | Car wheel movement                   |
+| 3  | DC Motors (with wheels)    | 4        | Car wheel movement (2 left + 2 right, tank-style) |
 | 4  | HC-SR04 Ultrasonic Sensor  | 1        | Emergency obstacle detection (local) |
 | 5  | 18650 Li-ion Batteries     | 2–4      | Power supply for car                 |
 | 6  | Battery Holder             | 1        | Holds 18650 cells                    |
-| 7  | Smartphone                 | 1        | Camera + Gyroscope + GPS             |
+| 7  | Smartphone                 | 1        | Camera (core) + Gyroscope & GPS (optional) |
 | 8  | Laptop                     | 1        | AI processing (cloud/server)         |
 | 9  | Car Chassis                | 1        | Car body/frame                       |
 | 10 | Jumper Wires               | Many     | Connections between components       |
@@ -61,19 +62,29 @@ The motors need more power than the ESP32 can give. The L298N is a "power bridge
   - `IN3`, `IN4` → Motor B direction
   - `ENA`, `ENB` → Speed control (PWM)
 
+### Tank-Style 4WD Wiring
+
+We use **4 motors** in a **tank-style** configuration:
+- **Motor A (Left pair):** 2 DC motors wired **in parallel** to L298N Channel A
+- **Motor B (Right pair):** 2 DC motors wired **in parallel** to L298N Channel B
+
+To turn, we drive the left and right pairs at different speeds (differential drive).
+
 ### Pin Connections (ESP32 → L298N)
 
-| ESP32-C6 Pin | L298N Pin | Function           |
-|--------------|-----------|---------------------|
-| GPIO X       | IN1       | Motor A Forward     |
-| GPIO X       | IN2       | Motor A Backward    |
-| GPIO X       | IN3       | Motor B Forward     |
-| GPIO X       | IN4       | Motor B Backward    |
-| GPIO X (PWM) | ENA       | Motor A Speed       |
-| GPIO X (PWM) | ENB       | Motor B Speed       |
-| GND          | GND       | Common Ground       |
+| ESP32-C6 Pin  | L298N Pin | Function                         |
+|---------------|-----------|----------------------------------|
+| GPIO 6        | IN1       | Left motors — forward direction  |
+| GPIO 7        | IN2       | Left motors — backward direction |
+| GPIO 4 (PWM)  | ENA       | Left motors — speed (0–255)      |
+| GPIO 10       | IN3       | Right motors — forward direction |
+| GPIO 11       | IN4       | Right motors — backward direction|
+| GPIO 5 (PWM)  | ENB       | Right motors — speed (0–255)     |
+| GND           | GND       | Common ground                    |
 
-> ⚠️ **Note:** Actual GPIO pin numbers will be decided during wiring. Replace `GPIO X` with final values.
+> 📌 These pin numbers match `src/esp32/config.h`. If you use different pins, update that file.
+>
+> 🔧 **For ESP8266 (NodeMCU):** Use D-pin labels (D1=GPIO5, D2=GPIO4, D5=GPIO14, D6=GPIO12, D7=GPIO13, D8=GPIO15) and update `config.h` accordingly.
 
 ---
 
@@ -105,9 +116,10 @@ The motors need more power than the ESP32 can give. The L298N is a "power bridge
 ### DC Motors
 - **Type:** TT DC Gear Motors (common in robotics kits)
 - **Voltage:** 3V–6V (driven via L298N at higher voltage)
-- **Configuration:**
-  - 2WD: 2 drive motors + 1 caster wheel
-  - 4WD: 4 drive motors (optional)
+- **Configuration:** 4WD tank-style
+  - 2 left motors wired **in parallel** → L298N Channel A
+  - 2 right motors wired **in parallel** → L298N Channel B
+  - Differential drive: turn by running sides at different speeds
 
 ### Chassis
 - Can be a ready-made robot car chassis kit
@@ -130,15 +142,31 @@ The phone sits on top of the car, facing forward. It needs a stable mount so the
 ## 🔗 Overall Wiring Summary
 
 ```
-18650 Batteries ──→ L298N (Motor Power + 5V Regulator)
-                         ├── DC Motor A
-                         └── DC Motor B
+18650 Batteries (7.4V) ──→ L298N VIN (Motor Power + 5V Regulator)
+                               ├── Left DC Motors  (2 in parallel → Channel A)
+                               └── Right DC Motors (2 in parallel → Channel B)
 
-ESP32-C6 ──→ L298N (Control Pins: IN1, IN2, IN3, IN4, ENA, ENB)
-ESP32-C6 ──→ HC-SR04 Ultrasonic Sensor (Trig + Echo pins)
-ESP32-C6 ──→ Wi-Fi ──→ Laptop (receives commands)
+ESP32-C6 GPIO 6,7,4  ──→ L298N IN1, IN2, ENA (Left motors)
+ESP32-C6 GPIO 10,11,5 ──→ L298N IN3, IN4, ENB (Right motors)
+ESP32-C6 GPIO 2 ──→ HC-SR04 TRIG
+HC-SR04 ECHO ──→ Voltage Divider (1kΩ + 2kΩ) ──→ ESP32-C6 GPIO 3
+ESP32-C6 ──→ Wi-Fi ──→ Laptop (receives driving commands via HTTP)
 
-Smartphone ──→ Wi-Fi ──→ Laptop (sends video + sensor data)
+Smartphone ──→ Wi-Fi ──→ Laptop (sends video stream via MJPEG)
+```
+
+### HC-SR04 Voltage Divider (ECHO pin → 3.3V)
+
+The HC-SR04 ECHO pin outputs 5V, but ESP32 GPIO is 3.3V. Use a simple voltage divider:
+
+```
+HC-SR04 ECHO ──→ [1kΩ resistor] ──→ ESP32 GPIO 3
+                                  │
+                              [2kΩ resistor]
+                                  │
+                                 GND
+
+Output voltage = 5V × 2kΩ / (1kΩ + 2kΩ) = 3.33V ✅
 ```
 
 ---
