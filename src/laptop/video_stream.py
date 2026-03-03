@@ -49,8 +49,8 @@ def main():
             continue
         result = model.predict(frame)
         
-        for r in results:
-        boxes = r.boxes
+        for r in result:
+            boxes = r.boxes
         for box in boxes:
             class_id = int(box.cls[0])
             confidence = float(box.conf[0])
