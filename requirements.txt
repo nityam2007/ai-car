@@ -1,0 +1,29 @@
+# requirements.txt — AI Car Project
+# created by: claude + nityam | 2026-03-03
+#
+# Install with:
+#   python -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements.txt
+
+# ── CORE VISION ─────────────────────────────────────
+# Kornia-rs: Rust-backed computer vision (2-5x faster than OpenCV for I/O & transforms)
+# Used for: JPEG decode (libjpeg-turbo), resize, color-space conversion
+# GitHub: https://github.com/kornia/kornia-rs
+kornia-rs==0.1.10
+
+# OpenCV: display (imshow), drawing, contour detection
+opencv-python>=4.9.0
+
+# Numpy: array ops (kornia-rs returns numpy arrays)
+numpy>=1.26.0
+
+# ── HTTP STREAMING ──────────────────────────────────
+# Persistent HTTP sessions for MJPEG stream (avoids TCP re-handshake per frame)
+requests>=2.31.0
+
+# ── OPTIONAL: ML / FUTURE AI ────────────────────────
+# Uncomment when adding deep-learning lane following (Phase 2):
+# torch>=2.0.0                 # PyTorch — for CNN steering regression
+# kornia>=0.7.0                # Python kornia (PyTorch-based transforms/augmentation)
+# ultralytics>=8.0.0           # YOLOv8 — object/sign detection (optional)
