@@ -12,8 +12,8 @@
 # GitHub: https://github.com/kornia/kornia-rs
 kornia-rs==0.1.10
 
-# OpenCV: display (imshow), drawing, contour detection
-opencv-python>=4.9.0
+# OpenCV: display (imshow), drawing, contour detectionplay.shape[:2
+opencv-python>=4.9.0play.shape[:2
 
 # Numpy: array ops (kornia-rs returns numpy arrays)
 numpy>=1.26.0
@@ -22,8 +22,11 @@ numpy>=1.26.0
 # Persistent HTTP sessions for MJPEG stream (avoids TCP re-handshake per frame)
 requests>=2.31.0
 
-# ── OPTIONAL: ML / FUTURE AI ────────────────────────
+# ── YOLO STOP SIGN DETECTION ────────────────────────
+# YOLO26n for real-time stop sign detection (uses src/laptop/models/yolo26n.pt)
+ultralytics>=8.3.0
+
+# ── OPTIONAL: FUTURE AI ────────────────────────────
 # Uncomment when adding deep-learning lane following (Phase 2):
 # torch>=2.0.0                 # PyTorch — for CNN steering regression
 # kornia>=0.7.0                # Python kornia (PyTorch-based transforms/augmentation)
-# ultralytics>=8.0.0           # YOLOv8 — object/sign detection (optional)

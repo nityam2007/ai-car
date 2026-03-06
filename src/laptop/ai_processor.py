@@ -1,11 +1,10 @@
-# ai_processor.py — Lane Detection + PID Steering for AI Car
+# ai_processor.py — Lane Detection + PID Steering + YOLO Stop Sign Detection
 # created by: claude + nityam | 2026-03-03
-#
-# Detects the dotted white centerline on a black track, computes a steering
-# angle to keep the robot centered on that line.
+# edited by: claude + nityam | 2026-03-06 — added YOLO26n stop sign detection
 #
 # Pipeline:
 #   BGR frame
+#     → YOLO26n: detect stop signs (COCO class 11) → draw boxes + flag
 #     → crop bottom 50% (ROI — road only, ignore background)
 #     → grayscale → Gaussian blur → binary threshold (white line pops)
 #     → morphology CLOSE (connect dotted segments into continuous blob)
@@ -16,8 +15,8 @@
 # Uses kornia-rs (Rust) for grayscale + resize when available — fastest path.
 # Falls back to OpenCV if not installed.
 #
-# Draws debug overlay: ROI box, detected line contour, centroid dot,
-# center reference line, steering direction arrow.
+# Draws debug overlay: YOLO bounding boxes, ROI box, detected line contour,
+# centroid dot, center reference line, steering direction arrow.
 
 import cv2
 import numpy as np
@@ -28,6 +27,28 @@ try:
     _KORNIA = True
 except ImportError:
     _KORNIA = False
+
+# ── YOLO26n — stop sign detection ───────────────────────────────────────────
+import os as _os
+try:
+    from ultralytics import YOLO
+    _MODEL_PATH = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                "models", "yolo26n.pt")
+    if _os.path.exists(_MODEL_PATH):
+        _yolo = YOLO(_MODEL_PATH, verbose=False)
+        _YOLO_OK = True
+        print(f"  YOLO26n loaded: {_MODEL_PATH}")
+    else:
+        _YOLO_OK = False
+        print(f"  YOLO model not found: {_MODEL_PATH}")
+except ImportError:
+    _YOLO_OK = False
+    print("  ultralytics not installed — YOLO disabled")
+
+# COCO class 11 = "stop sign"
+STOP_SIGN_CLASS = 11
+YOLO_CONF       = 0.40      # minimum confidence to count as detection
+COL_STOP_BOX    = (0, 0, 255)   # red bounding box for stop sign
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -95,6 +116,29 @@ def _to_gray(bgr: np.ndarray) -> np.ndarray:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+def detect_stop_signs(frame_bgr: np.ndarray, display: np.ndarray):
+    """Run YOLO26n on frame, draw boxes, return True if stop sign detected.
+    # created by: claude + nityam | 2026-03-06
+    """
+    if not _YOLO_OK:
+        return False
+    results = _yolo(frame_bgr, conf=YOLO_CONF, verbose=False)
+    found = False
+    for r in results:
+        for box in r.boxes:
+            cls_id = int(box.cls[0])
+            if cls_id == STOP_SIGN_CLASS:
+                found = True
+                conf = float(box.conf[0])
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cv2.rectangle(display, (x1, y1), (x2, y2), COL_STOP_BOX, 2)
+                label = f"STOP {conf:.0%}"
+                cv2.putText(display, label, (x1, y1 - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, COL_STOP_BOX, 2)
+    return found
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 def process_frame(frame_bgr: np.ndarray):
     """
     Main entry point — called from video_stream.py each frame.
@@ -103,13 +147,21 @@ def process_frame(frame_bgr: np.ndarray):
         frame_bgr: (H,W,3) BGR uint8 from the camera stream
 
     Returns:
-        display: (H,W,3) BGR uint8 — frame with debug overlay drawn
-        steering: float | None — steering angle in degrees (+right / −left)
+        display:       (H,W,3) BGR uint8 — frame with debug overlay drawn
+        steering:      float | None — steering angle (+right / −left)
+        stop_detected: bool — True if YOLO detected a stop sign
 
     # created by: claude + nityam | 2026-03-03
+    # edited by: claude + nityam | 2026-03-06 — added YOLO stop sign + 3rd return
     """
     display = frame_bgr.copy()
     h, w = frame_bgr.shape[:2]
+
+    # ── 0. YOLO stop sign detection ─────────────────────────────────────────
+    stop_detected = detect_stop_signs(frame_bgr, display)
+    if stop_detected:
+        cv2.putText(display, "STOP SIGN DETECTED", (10, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, COL_STOP_BOX, 2)
 
     # ── 1. ROI: bottom portion of frame (road only) ─────────────────────────
     roi_y = int(h * ROI_TOP_FRAC)
@@ -174,10 +226,10 @@ def process_frame(frame_bgr: np.ndarray):
         cv2.arrowedLine(display, (center_x, h - 20), (arrow_x, h - 20),
                         COL_DOT, 2, tipLength=0.3)
 
-        return display, steering
+        return display, steering, stop_detected
     else:
         # no line detected — keep last steering, signal None
         _pid.reset()
         cv2.putText(display, "NO LINE DETECTED", (10, h - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        return display, None
+        return display, None, stop_detected

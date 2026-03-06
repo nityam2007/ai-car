@@ -51,7 +51,7 @@ except ImportError:
     AI_OK = False
     def process_frame(frame_bgr):
         """No-op fallback when ai_processor.py is not present."""
-        return frame_bgr, None
+        return frame_bgr, None, False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -281,13 +281,16 @@ def main():
 
         # ── AI overlay ──
         if ai_on and AI_OK:
-            display, steering = process_frame(frame)
-            # send steering command to ESP32
-            if steering is not None:
+            display, steering, stop_detected = process_frame(frame)
+            # stop sign → send stop to ESP32 instead of drive
+            if stop_detected:
+                stop_esp32()
+            elif steering is not None:
                 send_to_esp32(steering)
         else:
             display  = frame
             steering = None
+            stop_detected = False
 
         # ── FPS calc ──
         n_frames += 1
@@ -308,7 +311,9 @@ def main():
             cv2.rectangle(display, (0, 0), (w, 28), (0, 0, 0), -1)
             tag = "rs" if KORNIA_OK else "cv2"
             txt = f"FPS:{fps:.1f}  Proc:{proc_ms:.0f}ms  [{tag}]"
-            if steering is not None:
+            if stop_detected:
+                txt += "  🛑 STOP"
+            elif steering is not None:
                 txt += f"  Steer:{steering:+.1f}"
             cv2.putText(display, txt, (8, 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
