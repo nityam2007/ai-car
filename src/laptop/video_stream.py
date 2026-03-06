@@ -57,7 +57,7 @@ except ImportError:
 # ═════════════════════════════════════════════════════════════════════════════
 #  CONFIG — change these to match your setup
 # ═════════════════════════════════════════════════════════════════════════════
-PHONE_IP    = "192.168.16.195"     # shown on app screen
+PHONE_IP    = "192.168.16.191"     # shown on app screen
 PORT        = "8081"               # default for IP Webcam
 USERNAME    = ""                   # leave "" if no auth
 PASSWORD    = ""                   # leave "" if no auth

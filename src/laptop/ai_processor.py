@@ -122,7 +122,7 @@ def detect_stop_signs(frame_bgr: np.ndarray, display: np.ndarray):
     """
     if not _YOLO_OK:
         return False
-    results = _yolo(frame_bgr, conf=YOLO_CONF, verbose=False)
+    results = _yolo(frame_bgr, conf=YOLO_CONF, verbose=False, device="cpu")
     found = False
     for r in results:
         for box in r.boxes:
